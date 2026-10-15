@@ -1,0 +1,883 @@
+---
+name: "squil"
+description: "Use this skill whenever the user is working with SQuiL — the C# source generator at https://github.com/daemogar/SQuiL that turns .squil/.sql query files into strongly-typed C# data contexts. Trigger on any mention of SQuiL or any .squil file; on SQuiLBaseDataContext, SQuiLResultType, [SQuiLQuery], [SQuiLTable], SQuiLException, SQuiLAggregateException, AddSQuiL, Process…Async; on .sql files paired with a C# project that uses AdditionalFiles for queries; on the @-prefix naming conventions (@Param_, @Params_, @Return_, @Returns_, @Debug, @SuppressDebug, @AsOfDate, @EnvironmentName); or whenever the user asks to author SQuiL query files, set up a .csproj for SQuiL, register a SQuiL data context, or write wrappers around generated Process…Async methods. Trigger even when the user does not say \"SQuiL\" by name — if their .csproj references SQuiL.Core, SQuiL.SqlServer, SQuiL.Sqlite, or SQuiL.Postgres, this skill applies. Prefer this skill over generic \"C# / SQL\" guidance for any project that uses SQuiL."
+---
+
+# SQuiL skill
+
+SQuiL is a C# source generator that converts SQuiL query files into strongly-typed C# code: a partial data context, a request/response pair per query, row classes for table-valued parameters and result tables, a `QueryFiles` enum, a `TableType` enum, and DI helpers. The author writes plain T-SQL with specific `@`-prefixed naming; the generator reads those names to figure out parameter shapes and result shapes.
+
+**File extension:** `.squil` is the canonical extension for SQuiL query files — use it in everything you author (new files, examples, docs). The generator also accepts plain `.sql`, so existing `.sql` query files are fine and do not need renaming; the editor extensions' tooling (highlighting, linting, preview), however, keys off `.squil`.
+
+This skill covers three things:
+
+1. **Authoring `.squil` files** that the generator can parse.
+2. **Wiring up a `.csproj`** to consume SQuiL.
+3. **Using the generated code** through a recommended file layout — one partial data context that registers queries, plus per-query partial files that wrap the generated `Process…Async` methods so callers never touch the generated surface directly.
+
+This skill does not cover contributing to SQuiL itself (the source generator's parser/tokenizer/codegen). For that, work against the live repo and its snapshot tests.
+
+## Syntax highlighting
+
+The canonical TextMate grammar for SQuiL ships with this skill at `squil.tmLanguage.json` (scope `source.squil`, same file the VS Code extension bundles). Use it whenever syntax-aware handling of `.squil` content is needed:
+
+- **Rendering SQuiL in markdown** — fence SQuiL code blocks with ` ```sql ` (closest supported language; SQuiL is a T-SQL superset by convention, so SQL highlighting is correct for everything except the `@`-prefix semantics).
+- **Tokenizing/classifying SQuiL text** (building editor support, HTML rendering, docs generation) — read `squil.tmLanguage.json` from this skill's directory and apply its patterns; the SQuiL-specific scopes are `variable.parameter.input.squil` (`@Param_`/`@Params_`), `support.variable.return.squil` (`@Return_`/`@Returns_`), `variable.other.special.squil` (`@Debug`, `@EnvironmentName`), and `meta.annotation.name.squil` (the `--Name:` header).
+
+---
+
+## 1. Authoring `.squil` files
+
+A SQuiL-parsable `.squil` file has three sections, in order:
+
+1. A leading `Declare` block — declares input parameters, output scalars, and output table types.
+2. A `Use <Database>;` line — names the database the connection should target.
+3. The actual SQL body — sets values, executes queries, populates declared tables, and finishes with `Select` statements that surface the outputs.
+
+Adding new `Declare` statements *after* the `Use` is rejected by the parser. If a generator error mentions "use statement fails when adding declare," that is almost always the cause.
+
+### Variable naming conventions
+
+The `@`-prefix is how the generator distinguishes inputs, outputs, and special variables. Casing of the prefix is not significant (`@Param_` and `@param_` both work) but PascalCase after the prefix is the convention and is what the generated C# member names mirror.
+
+| Prefix | Meaning | What the generator emits |
+|---|---|---|
+| `@Param_<Name>` | Input scalar parameter | Field `<Name>` on the request model |
+| `@Params_<Name>` | Input table-valued parameter | Collection field `<Name>` on the request model, plus a row class |
+| `@Return_<Name>` | Output scalar variable | Field `<Name>` on the response model |
+| `@Returns_<Name>` | Output table | Collection field `<Name>` on the response model, plus a row class |
+| `@Debug` | Diagnostic toggle (opt-in) | When declared, a `bool Debug` on the request model |
+| `@SuppressDebug` | Suppresses the auto-debug expression (opt-in) | When declared, a `bool SuppressDebug` on the request model |
+| `@AsOfDate` | Caller-supplied point-in-time (opt-in) | When declared *bare*, a **nullable** typed property on the request model |
+| `@EnvironmentName` | Bound to current environment at runtime (opt-in) | Sent as a SQL parameter when declared; not a request/response property |
+
+A scalar uses a primitive declared type (`int`, `varchar(10)`, `datetime`, `bit`, …). A table uses `Declare @Returns_<Name> table(...)` or `Declare @Params_<Name> table(...)` with column definitions; each column becomes a property on a generated row record.
+
+### Column types and defaults
+
+The declared SQL type maps to a C# type: `int`/`bigint`/`smallint`/`tinyint` → the matching integer type, `bit` → `bool`, `varchar`/`nvarchar`/`char`/`text`/`xml` → `string`, `decimal(p,s)`/`numeric(p,s)` → `decimal` (precision and scale are preserved), `money`/`smallmoney` → `decimal`, `float` → `double`, `real` → `float`, `date` → `System.DateOnly`, `time` → `System.TimeOnly`, `datetime`/`datetime2`/`smalldatetime` → `System.DateTime`, `datetimeoffset` → `System.DateTimeOffset`, `uniqueidentifier` → `System.Guid`, `varbinary`/`binary`/`image` → `byte[]`, `timestamp`/`rowversion` → `byte[]` (output only — declaring one as an input parameter is build error **SP0032**, since the database assigns the value).
+
+**Nullability — the one rule, two mechanisms:** a column or scalar is non-nullable UNLESS opted into nullable. Reference types (`string`, `byte[]`) are **never** auto-`?`. **Scalars opt in with an `= null` initializer; table columns opt in with a `null`/`not null` marker** — a scalar `Declare` cannot carry a `null`/`not null` clause (invalid T-SQL); doing so is build error **SP0037**. A scalar cannot be both nullable and carry a non-null default (the old `int null = 5` combo is gone).
+
+**Scalars:**
+
+| Declaration | C# type |
+|---|---|
+| `@Param_X int` (no `= null`) | `int X { get; set; }` |
+| `@Param_X int = null` | `int? X { get; set; }` |
+| `@Param_X int = 5` (default) | `int X { get; set; } = 5` |
+| `@Param_X varchar(10)` (ref type) | `string X { get; set; }` |
+| `@Param_X varchar(10) = null` | `string? X { get; set; }` |
+| `@Param_X varbinary(max)` | `byte[] X { get; set; }` |
+| `@Param_X varbinary(max) = null` | `byte[]? X { get; set; }` |
+
+**Table columns** (unchanged — `null`/`not null` markers, valid T-SQL inside `table(...)`):
+
+| Declaration | C# type |
+|---|---|
+| `table(X int)` (no marker) | `int X` |
+| `table(X int null)` | `int? X` |
+| `table(X int not null)` | `int X` |
+| `table(X int null = 5)` (null marker + default) | `int? X = 5` |
+
+The non-nullable-by-default rule is shared between scalars and table columns — only the opt-in syntax differs.
+
+A table column may carry a SQL `default` in **any** position. The generator produces a **hybrid record**: non-defaulted columns become positional constructor parameters (SQL relative order preserved), and defaulted columns become `{ get; init; } = <value>` properties. For example:
+
+```sql
+Declare @Params_Rows table(RowID int, Amount decimal(18,2) default 1.5, Qty int, Note varchar(50) default 'hello');
+```
+
+generates:
+
+```csharp
+public partial record Rows(int RowID, int Qty)
+{
+    public decimal Amount { get; init; } = 1.5m;
+    public string Note { get; init; } = "hello";
+}
+```
+
+Construct with `new Rows(1, 5)` or `new Rows(1, 5) { Amount = 2.5m, Note = "x" }`. Tables with no defaults are unchanged (plain positional record). The editor extensions parse `default` values and emit this same hybrid shape in their C# preview. Default values are mapped per-type via `Token.CSharpValue` (decimal gets an `m` suffix, strings are quoted).
+
+### Special variables (opt-in)
+
+The four input-side special variables only affect the generated C# when you **declare them** in the header — nothing is emitted implicitly. They all share the same placement rules: declaring one after the `Use` statement is a build error (SP0016); declaring one after other header declarations is a warning. Put them first in the header.
+
+- **`@Debug`** — declare it (`Declare @Debug bit = 0;`) to get a `bool Debug` on the request model and to read the value in the SQL body. (Previously `@Debug` was *always* on the request along with a `DebugOnly` property; both behaviors are gone — `@Debug` is now opt-in and `DebugOnly` no longer exists.)
+- **`@SuppressDebug`** — declare it to get a `bool SuppressDebug` on the request model. It **requires `@Debug` to also be declared**; declaring it alone is a build error (**SP0019**). It replaces the old `DebugOnly` property and gates the auto-debug expression SQuiL sends: `!request.SuppressDebug && (request.Debug || EnvironmentName != "Production")`.
+- **`@AsOfDate`** — declared *bare* (`Declare @AsOfDate date = '2008-10-01';`), it becomes a **nullable** typed property on the request model whose type follows the SQL type map (e.g. `date` → `System.DateOnly?`). When the caller leaves it `null`, the current time is substituted at execution; the SQL initializer is ignored at runtime. An ordinary `@Param_AsOfDate` (with the prefix) is *not* special — it is a normal input scalar.
+- **`@EnvironmentName`** — declare it to have the current environment sent as a SQL parameter for the body to read; it is not emitted as a request property.
+
+### Minimal example — single scalar return
+
+```sql
+Declare @Return_Scaler int;
+
+Use UnitTesting;
+
+Set @Return_Scaler = 42;
+
+Select @Return_Scaler As Scaler;  -- optional on SQL Server — the generator adds "As [Scaler]" if you omit it
+```
+
+### Result-set authoring — two styles
+
+SQuiL routes each result set returned by a `Select` to the matching declared output by **shape**: the ordered list of (column name, C# type) pairs. Two authoring styles produce that shape.
+
+**Table-variable style (recommended)** — Declare a table variable, populate it with `Insert Into … Select …`, then emit it with `Select * From`. The table-variable declaration is the *authoritative schema* — column names, C# types, and column order are locked at build time, so the result set always matches the declared output by construction.
+
+```sql
+Declare  @Returns_Orders table(
+    OrderID int,
+    Total   decimal(18, 2)
+);
+
+Insert Into @Returns_Orders
+Select o.OrderID, o.Total
+From   Orders o;
+
+Select * From @Returns_Orders;  -- emits the result set
+```
+
+**Direct-select style (lean)** — You can just `Select` directly — no table variable needed. SQuiL routes the result set by matching its runtime shape against every declared output. Supply `AS` aliases and `CAST` only where the **base C# type** differs from the source column; **length casts are never required** (e.g., casting `varchar(50)` to `varchar(100)` adds nothing — both map to `string`). A `Select` whose shape matches no declared output is skipped and reported as a missing return. (A scalar output is the one exception to "supply the alias yourself" — see **Scalar convention** below: on SQL Server, a bare scalar select gets its alias supplied automatically.)
+
+```sql
+Declare @Returns_Orders table(
+    OrderID int,
+    Total   decimal(18, 2)
+);
+
+Use OrdersDatabase;
+
+-- Direct select — shape (OrderID:int, Total:decimal) matches @Returns_Orders
+Select o.OrderID,
+       Cast(o.RawTotal As decimal(18, 2)) As Total  -- CAST needed: float → decimal
+From   Orders o;
+```
+
+**Scalar convention** — When the select is a real expression rather than a bare variable reference (e.g. `Count(*)`), alias the column to the declared base name so the single-column shape matches:
+
+```sql
+Declare @Return_Count int;
+
+Use MyDatabase;
+
+Select Count(*) As Count  -- alias "Count" matches declared name @Return_Count
+From   Orders;
+```
+
+Or set the variable and select it bare. On **SQL Server**, the alias on a bare `@Return_…` select is **optional** — if you leave it off, the generator appends a bracketed `As [Count]` to the emitted SQL for you (always bracketed, since an unbracketed alias would be a T-SQL syntax error for a reserved word like `Order` or `Key`). The editor surfaces this with a quiet **SP0042** hint (VS Code: Hint; SSMS/Visual Studio: Info) on the bare select, with a quick-fix that inserts the exact alias the generator would add. Writing it yourself is still good practice and produces no diagnostic:
+
+```sql
+Set @Return_Count = (Select Count(*) From Orders);
+Select @Return_Count As Count;  -- optional on SQL Server — the generator would add As [Count] if omitted
+```
+
+A written alias that does **not** match the declared base name (e.g. `As Foo` instead of `As Count`) is flagged as an **SP0031** warning — as long as the `Select` and its alias are on the **same line**; the check is line-anchored/best-effort, so wrapping the alias onto its own line (e.g. `Select @Return_Count` then `As Foo` on the next line) is not detected. SQLite and PostgreSQL are unaffected — their scalars are single-column temp tables, so you select a real named column and there is never an alias to synthesize. Also, one `Select` may return only **one** output scalar: listing two or more (e.g. `Select @Return_A, @Return_B;`) is a build error (**SP0041**) on every dialect, because the runtime shape key becomes multi-column and matches no generated case — use one `Select` per scalar instead.
+
+**SP0030 collision** — If two declared outputs share an identical shape (same ordered column names and C# types), SQuiL cannot tell them apart at runtime. Differentiate them by changing a column name, adjusting the column order, using a different C# type, or combining them into one shared output with a single name.
+
+### Nested objects (output)
+
+Mark a table column `Primary Key` to name that table's key. Any other declared table with a column of that **exact** name becomes its child — linked by that column name (foreign key by convention). The `.squil` stays valid T-SQL as written: no `@`-typed columns, no nested `table()` syntax, just an ordinary column marked `Primary Key`. Cardinality follows each table's own prefix — `@Return_X` (singular) nests as an object, `@Returns_X` (plural) nests as a list.
+
+Only **root** tables (tables no other declared table links to) stay top-level `<QueryName>Response` properties. Every child table collapses into its parent record as a settable nested member instead: `List<<Ctx>.Models.<Child>>? <Child>` for a list child, `<Ctx>.Models.<Child>? <Child>` for an object child. The member name is the child table's base name; the record's positional constructor stays columns-only (the nested member is a plain settable property added after the ctor, not part of it). The `Process…Async` / `*Request` / `*Response` / `SQuiLResultType` calling convention is **unchanged** — only the response's internal shape nests.
+
+Transport is an **in-memory key-stitch**: you still write plain, flat `Select * From @Return*`/`@Returns*` statements, one per declared table — no SQL-side `JOIN`, no nested JSON. The generator reads each table into a flat list, then relinks children into parents in C# by matching PK⇄FK column values. This is dialect-agnostic (works the same regardless of target database). **Nuance:** a parent row with zero matching children gets an **empty list `[]`** for that member, not `null` — different from the top-level list-return convention, where `null` means the result set itself was absent. An object child with no match is `null`. A child row whose key matches no parent row is **dropped from the tree entirely** — it has nowhere to attach, so it will not appear anywhere in the response.
+
+```sql
+Declare @Return_Transcript   table(TranscriptID int Primary Key, IssueDate date);
+Declare @Returns_Institution table(InstitutionID int Primary Key, TranscriptID int, SchoolName varchar(50));
+Declare @Returns_Course      table(CourseID int, InstitutionID int, Title varchar(50));
+
+Use [Db];
+
+Insert Into @Return_Transcript   Select TranscriptID, IssueDate From T;
+Insert Into @Returns_Institution Select InstitutionID, TranscriptID, SchoolName From I;
+Insert Into @Returns_Course      Select CourseID, InstitutionID, Title From C;
+
+Select * From @Return_Transcript;
+Select * From @Returns_Institution;
+Select * From @Returns_Course;
+```
+
+`Institution` links to `Transcript` via `TranscriptID`; `Course` links to `Institution` via `InstitutionID`. Only `Transcript` is a root, so it's the only property left on the response — everything else nests:
+
+```csharp
+public partial record GetTranscriptResponse
+{
+    public TestCase.Models.Transcript? Transcript { get; set; } = default!;
+}
+
+public partial record Transcript(int TranscriptID, System.DateOnly IssueDate)
+{
+    public List<TestCase.Models.Institution>? Institution { get; set; }
+}
+
+public partial record Institution(int InstitutionID, int TranscriptID, string SchoolName)
+{
+    public List<TestCase.Models.Course>? Course { get; set; }
+}
+
+public partial record Course(int CourseID, int InstitutionID, string Title);
+```
+
+**Diagnostics:** SP0033 (build error) if a child's column matches more than one table's `Primary Key` (ambiguous parent); SP0034 (build error) if following PK/FK links loops back to the same table (cycle — no recursion in v1); SP0035 (editor-only Hint/Info) if a `Primary Key` has no linking child, surfaced only once nesting is already in play elsewhere in the file. A file with no `Primary Key` links generates today's flat response, unchanged — graceful degradation, not an opt-in flag.
+
+### Nested objects (input)
+
+The same `Primary Key`-by-convention rule nests `@Param_`/`@Params_` tables too — a **separate** graph from the output one above (never mixed). Only **root** input tables stay top-level `<QueryName>Request` properties; every child input table collapses into its parent request record as a settable nested member, exactly like the response side. The one difference: a **list** child **keeps** its `= []` initializer (matching every other input list property, since a request list is never "absent" the way a response list can be); an **object** child gets no initializer, same as the output side.
+
+You never populate the linking columns yourself — SQuiL synthesizes a join key for every nested input row when it flattens the request: an integer-family key (`int`/`bigint`/`smallint`) gets a 1-based sequential value per table; a `uniqueidentifier` key gets a fresh `Guid`. The synthesized parent key is copied into the child's matching FK column automatically before each row is serialized through the normal JSON/OPENJSON path — unchanged for callers, and files with no input links keep today's flat per-table path untouched.
+
+```sql
+Declare @Param_Order     table(OrderID int Primary Key, CustomerName varchar(50));
+Declare @Params_Shipment table(ShipmentID int Primary Key, OrderID int, Carrier varchar(50));
+
+Use [Db];
+
+Insert Into dbo.Orders    Select OrderID, CustomerName From @Param_Order;
+Insert Into dbo.Shipments Select ShipmentID, OrderID, Carrier From @Params_Shipment;
+```
+
+`Shipment` links to `Order` via `OrderID`, so only `Order` is a root; the caller never sets `OrderID`/`ShipmentID` — SQuiL synthesizes both:
+
+```csharp
+public partial record PlaceOrderRequest
+{
+    public TestCase.Models.Order? Order { get; set; } = default!;
+}
+
+public partial record Order(int OrderID, string CustomerName)
+{
+    public List<TestCase.Models.Shipment>? Shipment { get; set; } = [];
+}
+
+public partial record Shipment(int ShipmentID, int OrderID, string Carrier);
+```
+
+**Diagnostics:** SP0033/SP0034/SP0035 above apply to this graph too, independently of the output graph. **SP0036** (build error) is input-only: it fires when a link column's declared type is neither integer-family (`int`/`bigint`/`smallint`) nor `uniqueidentifier` — nothing else can have a join key synthesized; all three editors squiggle it too.
+
+### Authoring for SQLite
+
+When a project targets the SQLite provider (`SQuiL.Sqlite`), the `.squil` file is
+authored in **native SQLite**, not T-SQL — SQLite has no `Declare @x table(...)`
+and no `Use [Db];`. Everything else about the generated C# surface is
+**identical** to SQL Server (`Process…Async` → `SQuiLResultType<Response>`,
+`<Query>Request`/`<Query>Response`, row records in `<Ctx>.Models`, `AddSQuiL()`).
+Only the SQL you write, the runtime base class (`SqliteDataContext`), and the
+ADO.NET plumbing differ.
+
+The header is a leading run of native `Create Temp Table` statements. The
+direction/cardinality convention that `@Param_`/`@Params_`/`@Return_`/`@Returns_`
+express in T-SQL carries over onto the **temp-table name**:
+
+| Temp-table name | Role | C# surface |
+|---|---|---|
+| `Params_<N>` | input list | `List<<Ctx>.Models.<N>>? = []` on `*Request` |
+| `Param_<N>` (multi-column) | input object | `<Ctx>.Models.<N>?` on `*Request` |
+| `Param_<N>` (single-column) | input scalar | typed property on `*Request` |
+| `Returns_<N>` | output list | `List<<Ctx>.Models.<N>>?` on `*Response` (no `= []`) |
+| `Return_<N>` (multi-column) | output object | `<Ctx>.Models.<N>?` on `*Response` |
+| `Return_<N>` (single-column) | output scalar | typed property on `*Response` |
+
+Rules specific to SQLite authoring:
+
+- **Params before returns.** All inputs (`Param_`/`Params_`) must be declared
+  before any output (`Return_`/`Returns_`) — out of order is build error
+  **SP0040** (an error in SQLite; only a warning in SQL Server).
+- **Single-column ⇒ scalar.** A one-column temp table collapses to a scalar
+  property; the property takes the **table's** base name.
+- **Native SQLite types** — `INTEGER`, `TEXT`, `REAL`, `BLOB`,
+  `NUMERIC`/`DECIMAL`, `BOOLEAN`, `DATE`/`DATETIME`, `GUID`. The SQLite dialect
+  owns the whole type map; note the affinities differ from T-SQL: `INTEGER` →
+  `long` (not `int`) and `REAL` → `double` (not `float`). `Primary Key`,
+  `null`/`not null`, and `default` are ordinary SQLite column constraints;
+  nullability and nested-object-key rules are unchanged.
+- **Positional body boundary.** There is no `Use` line. The body starts at the
+  first statement that is neither a `Create Temp Table` nor a population
+  (`Insert`/`Update`/`Delete`) of a declared **param** temp table; everything
+  from there down is emitted verbatim.
+- **Sample DML is stripped.** An `Insert Into <ParamTable> … Values …` in the
+  header is treated as sample data — dropped at generation and replaced by the
+  `json_each` input shred (the SQLite analogue of `OPENJSON`). So the file runs
+  as-is in a SQLite shell (creates + sample inserts + body), and generation just
+  swaps sample-inserts ↔ shred. `byte[]`/`BLOB` values round-trip through a hex
+  string decoded with SQLite's `unhex`.
+- **Special variables** are single-column temp tables named exactly `Debug`,
+  `EnvironmentName`, `AsOfDate`, `SuppressDebug` — same opt-in semantics.
+
+Worked example — author writes valid, runnable SQLite:
+
+```sql
+--Name: ImportPeople
+Create Temp Table Params_Person (PersonID INTEGER Primary Key, Name TEXT, Age INTEGER);
+Create Temp Table Return_Count (Value INTEGER);
+Create Temp Table Returns_Imported (PersonID INTEGER, Status TEXT);
+
+-- sample data (stripped at generation, replaced by the json_each shred)
+Insert Into Params_Person (PersonID, Name, Age) Values (1, 'Ada', 36), (2, 'Alan', 41);
+
+-- ↓ first non-temp / non-param-population statement = body boundary (replaces Use)
+Insert Into Returns_Imported (PersonID, Status) Select PersonID, 'ok' From Params_Person;
+Insert Into Return_Count (Value) Select Count(*) From Returns_Imported;
+Select Value From Return_Count;
+Select PersonID, Status From Returns_Imported;
+```
+
+Register with the SQLite dialect (inferred from `SQuiL.Sqlite`, or pinned):
+
+```csharp
+[SQuiLDialect(SQuiLDialect.Sqlite)]
+[SQuiLQuery(QueryFiles.ImportPeople)]
+public partial class ImportPeopleDataContext { }
+```
+
+Generated surface (same shape as SQL Server; note `INTEGER` → `long`):
+
+```csharp
+public partial record ImportPeopleRequest
+{
+    public List<TestCase.Models.Person>? Person { get; set; } = [];
+}
+
+public partial record ImportPeopleResponse
+{
+    public long Count { get; set; }
+    public List<TestCase.Models.Imported>? Imported { get; set; }
+}
+
+// Method on ImportPeopleDataContext (: SqliteDataContext):
+public Task<SQuiLResultType<ImportPeopleResponse>> ProcessImportPeopleAsync(
+    ImportPeopleRequest request, CancellationToken cancellationToken = default) { /* generated */ }
+```
+
+The row records `Person` and `Imported` land in `<Ctx>.Models`, `AddSQuiL()` and
+`result.TryGetValue(out var response, out var errors)` work identically, and a
+SQLite runtime error surfaces through the result's `errors` list (never thrown),
+reachable via `error.AsDbException()` as a `SqliteException`.
+
+### Authoring for PostgreSQL
+
+PostgreSQL (`SQuiL.Postgres`, dialect id 2) is a **near-twin of SQLite**: same
+`Create Temp Table` Option-4 header, same direction/cardinality-by-table-name
+convention, same positional body boundary, same sample-DML-stripped-and-
+replaced-by-a-shred model. The generated C# surface is identical in shape to
+SQL Server and SQLite; only the SQL you write, the runtime base class
+(`PostgresDataContext`), and the ADO.NET plumbing (`Npgsql`) differ.
+
+Two differences from SQLite:
+
+- **Input shred is `json_to_recordset`, not `json_each`.** PostgreSQL needs an
+  explicit TYPED column list to shred a JSON array into rows — the
+  OPENJSON-WITH analogue rather than SQLite's untyped shred:
+  `Insert Into <TempTable>(Col1, Col2) Select x."Col1", x."Col2" From
+  json_to_recordset(@__json_<Name>) AS x("Col1" <pgtype>, "Col2" <pgtype>);`.
+  A `bytea` column is declared `text` in the `AS` list and decoded with
+  `decode(x."Col", 'hex')` in the `SELECT` — PostgreSQL's analogue of SQLite's
+  `unhex(…)`.
+- **Identifier casing is Option B (bare + normalize).** PostgreSQL folds
+  unquoted identifiers to lowercase, but SQuiL still emits everything **bare**
+  — the temp-table DDL, the insert target, the whole author-facing body —
+  so a PostgreSQL `.squil` reads identically to a SQL Server/SQLite one. The
+  **only** quoted identifiers SQuiL emits are the `json_to_recordset`
+  `AS`-column-list, required to match the PascalCase JSON keys the shared
+  serializer emits. Result routing is case-insensitive on the PostgreSQL side
+  (the reader reports lowercased column names), so a build-time key like
+  `PersonID` still matches.
+
+PostgreSQL type map (author writes native PostgreSQL types):
+
+| PostgreSQL type(s) | C# |
+|---|---|
+| `int4`/`int`/`integer` | `int` |
+| `int8`/`bigint` | `long` |
+| `int2`/`smallint` | `short` |
+| `text`/`varchar`/`character varying`/`char`/`bpchar`/`json`/`jsonb` | `string` |
+| `bytea` | `byte[]` |
+| `uuid` | `System.Guid` |
+| `boolean`/`bool` | `bool` |
+| `timestamp`/`timestamp without time zone` | `System.DateTime` |
+| `timestamptz`/`timestamp with time zone` | `System.DateTimeOffset` |
+| `date` | `System.DateOnly` |
+| `time`/`time without time zone` | `System.TimeOnly` |
+| `numeric`/`decimal`/`money` | `decimal` |
+| `real`/`float4` | `float` |
+| `double precision`/`float8` | `double` |
+
+Worked example — author writes valid, runnable PostgreSQL:
+
+```sql
+--Name: ImportPeople
+Create Temp Table Params_Person (PersonID int4 Primary Key, Name text, Photo bytea);
+Create Temp Table Returns_Imported (PersonID int4, Name text);
+
+-- sample data (stripped at generation, replaced by the json_to_recordset shred)
+Insert Into Params_Person (PersonID, Name, Photo) Values (1, 'Ada', decode('00AB', 'hex'));
+
+Insert Into Returns_Imported (PersonID, Name) Select PersonID, Name From Params_Person;
+Select PersonID, Name From Returns_Imported;
+```
+
+Register with the PostgreSQL dialect (inferred from `SQuiL.Postgres`, or pinned):
+
+```csharp
+[SQuiLDialect(SQuiLDialect.Postgres)]
+[SQuiLQuery(QueryFiles.ImportPeople)]
+public partial class ImportPeopleDataContext { }
+```
+
+Same generated shape as the SQLite example above (row records in
+`<Ctx>.Models`, `AddSQuiL()`, `TryGetValue`), but the method's declaring class
+is `: PostgresDataContext` and a runtime error is reachable via
+`error.AsDbException()` as an `NpgsqlException`. Params-before-returns is
+still enforced as a build **error** here too (SP0040) — PostgreSQL is a
+temp-table dialect exactly like SQLite.
+
+### Common authoring mistakes
+
+- **Skipping `Use <DB>`.** Required, and it must come after the declares but before any data-modifying SQL.
+- **Adding new `Declare` statements after the `Use`.** Belongs in the leading block.
+- **Mismatched result-set shapes.** Every `Select` the SQL emits must match the shape (column name + C# type, in order) of exactly one declared `@Return_/@Returns_` variable. Use the table-variable style (populate a declared `@Returns_…` table and emit with `Select * From`) for guaranteed matches, or direct-select style with explicit `AS` aliases when the base C# types differ. Unmatched selects are silently skipped and reported as missing returns. Use SP0030 collision detection — two declared outputs cannot share identical shapes (name each column distinctly, reorder columns, or use different C# types).
+- **Length casts in direct-select style.** Casting `varchar(50)` to `varchar(100)` (or any varchar-to-varchar cast) is unnecessary — both map to `string` in C#. Only `CAST` when the **base C# type** differs (e.g., `float` to `decimal`).
+- **Reusing a name across input and output with different columns.** Table variables that share a base name (`@Param_Foo table(...)` + `@Return_Foo table(...)`, in one file or across query files) share a single generated record, so their column lists must be identical — same names, types, nullability, and order (sizes may differ). A mismatch is build error SP0017; either align the columns or rename one variable. When in doubt, just use distinct names.
+- **Declaring one name as both a list and a single object on the same side, in one file.** `@Returns_X table(...)` (a list) and `@Return_X table(...)` (a single object) in the same query file both resolve to one response property `X`; the generator keeps the first and silently drops the other. This is build error **SP0022** — rename one variable, or use the same cardinality for both. (Sharing a row record across *different* queries, or between an input and an output, is fine — only same-side same-file differing cardinality collides.)
+- **Referencing an `@variable` that was never declared.** A SQuiL file must be valid T-SQL *as written* — every `@variable` reference (including the specials like `@Debug` and `@EnvironmentName`) needs a textually-preceding `Declare` for that exact name. An undeclared reference is build error SP0013; the generator never invents or remaps names.
+- **Forgetting to PascalCase the suffix.** `@Param_personid` works but generates `personid` as a C# field, which fights every other naming convention in the project.
+- **Leaving a mutation query on `[SQuiLQuery]`.** A `[SQuiLQuery]` (or `[SQuiLQueryTransaction(enabled:false)]`) body that performs a persistent real-table mutation (`INSERT`/`UPDATE`/`DELETE`/`MERGE`) triggers build warning **SP0023** — wrap it with `[SQuiLQueryTransaction]` instead so the mutation is protected by a transaction.
+- **Adding your own `Begin Transaction` inside a `[SQuiLQueryTransaction]` body.** When `enabled:true`, the generator injects a C# `DbTransaction` around the query. Writing `BEGIN TRAN` in the SQL body doubles the transaction and is build error **SP0025**.
+- **Marking a read-only query with `[SQuiLQueryTransaction]`.** If the body has no persistent mutation (no `INSERT`/`UPDATE`/`DELETE`/`MERGE` on real tables), the generator warns SP0024 — use `[SQuiLQuery]` instead.
+- **Registering one query file on two data contexts.** Each query file maps to exactly one data context. A duplicate registration is build error **SP0027**.
+- **Applying both `[SQuiLQuery]` and `[SQuiLQueryTransaction]` to one class.** Build error **SP0029** — use one or the other, not both.
+- **Declaring a `timestamp`/`rowversion` column as an input.** The database assigns these values; declaring one on `@Param_`/`@Params_` (rather than only `@Return_`/`@Returns_`) is build error **SP0032**.
+- **Two tables both carrying a column that matches the same `Primary Key` name.** A nested-object child must resolve to exactly one parent — an ambiguous match is build error **SP0033**. Rename one of the colliding columns.
+- **A `Primary Key`/foreign-key chain that loops back on itself.** Nested objects require a tree, not a cycle; a self-referencing or circular link chain is build error **SP0034**.
+- **A nested-input link column typed as something other than an integer or `uniqueidentifier`.** SQuiL synthesizes nested-input join keys itself, but only for integer-family (`int`/`bigint`/`smallint`) or `uniqueidentifier` columns — anything else (e.g. `varchar`) is build error **SP0036**. Change the link column's type.
+- **Putting a `null`/`not null` marker on a scalar `Declare`.** That syntax is only valid on table columns — a scalar is invalid T-SQL with it. Build error **SP0037**. Use `= null` for a nullable scalar (or remove the marker for non-nullable).
+- **Referencing `SQuiL.Core` without the matching provider package.** A data context resolves to a dialect (explicitly via `[SQuiLDialect]`, else inferred from the single referenced provider, else SqlServer) whose runtime base class (`SqlServerDataContext` / `SqliteDataContext` / `PostgresDataContext`) isn't referenced by the compilation — build error **SP0038**. Add the provider package (`SQuiL.SqlServer`, `SQuiL.Sqlite`, or `SQuiL.Postgres`) alongside `SQuiL.Core`.
+- **Referencing two providers with no `[SQuiLDialect]`.** If the project references 2+ of `SQuiL.SqlServer`/`SQuiL.Sqlite`/`SQuiL.Postgres`, the dialect is ambiguous — each context needs an explicit `[SQuiLDialect(...)]`. Missing it is build error **SP0039**.
+- **Declaring a temp-table-dialect output before all inputs.** In a SQLite or PostgreSQL `.squil`, every `Param_`/`Params_` temp table must be declared before any `Return_`/`Returns_` — out-of-order is build error **SP0040** (only a warning in SQL Server).
+
+---
+
+## 2. Wiring up a `.csproj`
+
+A consuming project needs three things: `AdditionalFiles` so the generator sees the query files, a reference to the SQuiL analyzer/generator, and a reference to a provider runtime for the base data-context class the generated code inherits.
+
+### NuGet reference (the normal path)
+
+```xml
+<ItemGroup>
+    <PackageReference Include="SQuiL.Core" Version="*" />
+    <PackageReference Include="SQuiL.SqlServer" Version="*" />
+</ItemGroup>
+```
+
+Reference **both** packages — this is the two-things-you-need model, same
+shape as EF Core's provider packages:
+
+- `SQuiL.Core` carries the generator (packed into `analyzers/dotnet/cs`, so a
+  plain `PackageReference` is all it takes to activate it) plus the
+  provider-neutral runtime types: `SQuiLResultType`, `SQuiLError`,
+  `SQuiLException`, `SQuiLAggregateException`, `SQuiLBaseDataContext`, and the
+  `[SQuiLQuery]`/`[SQuiLTable]`/`[SQuiLQueryTransaction]`/`[SQuiLDialect]`
+  attributes.
+- `SQuiL.SqlServer` carries the SQL Server provider: `SqlServerDataContext`
+  (the class generated contexts actually inherit) and the
+  `Microsoft.Data.SqlClient` plumbing it uses.
+
+For **SQLite**, reference `SQuiL.Sqlite` instead of (or alongside)
+`SQuiL.SqlServer` — it carries `SqliteDataContext` and the
+`Microsoft.Data.Sqlite` plumbing. For **PostgreSQL**, reference `SQuiL.Postgres`
+instead — it carries `PostgresDataContext` and the `Npgsql` plumbing (multi-
+targets `netstandard2.0;net10.0`). The dialect is inferred from whichever
+provider is referenced (see "Selecting a dialect" below, "Authoring for
+SQLite", and "Authoring for PostgreSQL"). The generated surface is identical
+across dialects.
+
+**Both are required, not either/or.** NuGet does not flow a package's
+analyzer through a transitive dependency — only a *direct* `PackageReference`
+activates it. So referencing `SQuiL.SqlServer` alone pulls in `SQuiL.Core`'s
+runtime DLL (a normal transitive package reference) but **not** its analyzer,
+and the generator never runs. Referencing `SQuiL.Core` alone gives you
+generation but no runtime base class to inherit — the generated
+`Constructor.g.cs` file references a type (`SqlServerDataContext`) that isn't
+in the compilation, which is build error **SP0038** ("SQuiL Provider Package
+Not Referenced"). If a user reports SP0038 or "every `[SQuiLQuery]` lights up
+red", check for exactly this — one package present, the other missing.
+
+### Selecting a dialect — `[SQuiLDialect]`
+
+`[SQuiLDialect(...)]` on a data-context class is optional and picks which
+provider that context targets. The `SQuiLDialect` enum has three members:
+`SqlServer` (id 0), `Sqlite` (id 1), and `Postgres` (id 2). Resolution
+(`DialectRegistry.Resolve`) is **provider-inference**:
+
+1. An explicit `[SQuiLDialect(...)]` wins.
+2. Otherwise the **single referenced provider** package decides — reference
+   `SQuiL.SqlServer` and contexts target SQL Server; reference `SQuiL.Sqlite`
+   and they target SQLite; reference `SQuiL.Postgres` and they target
+   PostgreSQL.
+3. Otherwise (no provider referenced) SQL Server is the default — and
+   **SP0038** fires because that provider's base type is absent.
+4. Referencing **2+** providers with no `[SQuiLDialect]` on a context is build
+   error **SP0039** (ambiguous — add the attribute to disambiguate).
+
+So in a single-provider project the attribute is optional (the dialect is
+inferred); write it explicitly to pin a context or to disambiguate a
+multi-provider project.
+
+```csharp
+[SQuiLDialect(SQuiLDialect.Sqlite)]
+[SQuiLQuery(QueryFiles.GetUserName)]
+public partial class UserDataContext { }
+```
+
+### Reference template — building SQuiL from source
+
+If the user is working inside the SQuiL repo itself (not consuming it via
+NuGet), use `ProjectReference`s instead:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The generator picks up every .squil (and legacy .sql) under any
+         Queries/ folder. Adjust the globs if the project keeps queries
+         elsewhere. -->
+    <AdditionalFiles Include="**\Queries\*.squil" />
+    <AdditionalFiles Include="**\Queries\*.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SQuiL.Core\SQuiL.Core.csproj" />
+    <ProjectReference Include="..\SQuiL.SqlServer\SQuiL.SqlServer.csproj" />
+    <!-- Only needed if SQuiL.Core's ProjectReference to the generator isn't
+         already resolving as an analyzer in this build setup; SQuiL.Simple
+         and SQuiL.Tests in the SQuiL repo show both patterns. -->
+    <ProjectReference Include="..\SQuiL.SourceGenerator\SQuiL.SourceGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
+```
+
+The `OutputItemType="Analyzer"` and `ReferenceOutputAssembly="false"` attributes on the source-generator reference are not optional. Without them MSBuild treats the generator as a regular runtime dependency, the generation never runs, and every `[SQuiLQuery]` lights up red because nothing was emitted.
+
+### Connection strings and environment
+
+The provider runtime base class (`SqlServerDataContext` for the SQL Server provider) reads connection strings from `IConfiguration` with the standard `ConnectionStrings:<Name>` key. Each `[SQuiLQuery(..., setting: "Name")]` attribute names which connection-string key that query uses, so the project's configuration needs at least one connection string per distinct `setting:` value used in the data context. (Environment resolution, below, lives on the provider-neutral `SQuiLBaseDataContext` instead — every provider shares it.)
+
+```csharp
+ConfigurationBuilder builder = new();
+builder.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:ExampleOne"] = "Data Source=...;Initial Catalog=...;Integrated Security=True;...",
+});
+```
+
+`SQuiLBaseDataContext` resolves the current environment from the config key `EnvironmentName`, falling back to the env var `EnvironmentVariable`, then to `"Development"`. Queries that bind `@EnvironmentName` see this value at runtime.
+
+---
+
+## 3. Using the generated code — recommended layout
+
+The generator emits a partial data-context class plus per-query types. For a query whose `QueryFiles` enum member is `<QueryName>`, you get:
+
+- a method `Process<QueryName>Async(<QueryName>Request request, CancellationToken)` on the data context;
+- a request record `<QueryName>Request` and a response record `<QueryName>Response` (note: **no `Process` prefix** on the model types — only the method has it);
+- row records for table-valued and single-object variables, named `<Name>` (NO `Table`/`Object` suffix — just the bare name) — never `<Name>Table`/`<Name>Object`/`<Name>Row`/`<Name>Item`; auto-generated row records are emitted into `<ContextNamespace>.Models` by default; override with `[SQuiLQuery(..., Namespace: "Dto")]` or `""` for top-level;
+- the method returns `Task<SQuiLResultType<<QueryName>Response>>` (or the non-generic `Task<SQuiLResultType>` when the query declares no `@Return*`). `SQuiLResultType<T>` is a result wrapper, **not** the response itself — unwrap it with `result.TryGetValue(out var value, out var errors)`. Errors are *returned in the result*, not thrown.
+
+`<QueryName>` is the enum member: folder name + file name, both PascalCased and joined. So `Queries/Example1.squil` → `QueriesExample1` → method `ProcessQueriesExample1Async`, types `QueriesExample1Request` / `QueriesExample1Response`.
+
+**Don't call those generated methods from the rest of the app.** They are a low-level surface — every call site would have to remember the right request shape, unwrap the result, and apply the right cancellation pattern, and any rename in the SQL would break consumers.
+
+Instead, use this layout:
+
+```
+MyProject/
+├── MyProject.csproj
+├── MyDataContext.cs              # the [SQuiLQuery] / [SQuiLTable] attributes live here
+├── Queries/
+│   ├── Example1.squil            # generator input
+│   ├── Example1.cs               # hand-written wrappers — partial of MyDataContext
+│   ├── Example2.squil
+│   └── Example2.cs
+└── .filenesting.json             # nests *.squil under matching *.cs in Solution Explorer
+```
+
+### `MyDataContext.cs` — the registry
+
+This file is the single source of truth for which queries exist and which connection-string each uses. The class is `partial` so per-query files can extend it.
+
+```csharp
+using SQuiL;
+
+namespace MyProject;
+
+[SQuiLQuery(QueryFiles.QueriesExample1, setting: "ExampleOne")]
+[SQuiLQuery(QueryFiles.QueriesExample2, setting: "ExampleTwo")]
+[SQuiLQueryTransaction(QueryFiles.QueriesUpsertDocument, setting: "ExampleOne")]
+public partial class MyDataContext { }
+
+// SQuiL auto-supplies the resolved dialect's runtime base (: SqlServerDataContext
+// by default — see "Selecting a dialect" above) and an IConfiguration constructor
+// when no constructor is declared. Declare any constructor to opt out
+// (it must chain : base(configuration)).
+
+[SQuiLTable(TableType.Participation)]
+[SQuiLTable(TableType.Overrides)]
+public partial class Table { }
+```
+
+The `QueryFiles` enum is generated from the query-file paths: `Queries/Example1.squil` becomes `QueryFiles.QueriesExample1` (folder name + file name, both PascalCased, joined). The `TableType` enum is generated from `@Returns_<Name>` and `@Params_<Name>` table declarations — one entry per distinct table name across all query files. Add a `[SQuiLTable]` for each table the project actually uses so the row record is emitted.
+
+### `[SQuiLQueryTransaction]` — mutation queries with automatic transaction management
+
+`[SQuiLQueryTransaction]` is a sibling to `[SQuiLQuery]`. It produces the **same** `Process…Async` method, `*Request` / `*Response` models, and `SQuiLResultType` return type as `[SQuiLQuery]`, but wraps the query body in a C# `DbTransaction`. Use it for INSERT/UPDATE/DELETE/MERGE queries that should commit or roll back as a unit.
+
+```csharp
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+public class SQuiLQueryTransactionAttribute : Attribute
+{
+    public SQuiLQueryTransactionAttribute(
+        QueryFiles type,
+        string setting = "SQuiLDatabase",
+        bool enabled = true,
+        bool debugRollback = true)
+    { … }
+}
+```
+
+**Parameters:**
+
+- **`type`** — the `QueryFiles` enum member that names the query file.
+- **`setting`** (default `"SQuiLDatabase"`) — which connection-string key to use.
+- **`enabled`** (default `true`) — when `true`, the generator injects `connection.BeginTransaction()`, commits when `errors.Count == 0`, and rolls back on any SQL exception. Set `enabled: false` only when the calling code owns the transaction externally; the generated code will not inject one.
+- **`debugRollback`** (default `true`) — when `true` and the query declares `@Debug`, the generated code evaluates the debug expression (`request.Debug || EnvironmentName != "Production"`) before committing: if the debug expression is true the transaction **rolls back instead of commits**, but the response that was read is **still returned** to the caller (dry-run semantics). Set `debugRollback: false` to always commit even in debug mode. Has no effect when `@Debug` is not declared.
+
+**One-to-one mapping rule:** each query file maps to exactly one data context. Registering the same `QueryFiles` member on two different contexts is build error SP0027. A class may carry `[SQuiLQuery]` or `[SQuiLQueryTransaction]` attributes, but not both — mixing them is build error SP0029.
+
+**Example — mutation query with transaction + debug dry-run:**
+
+```sql
+-- Queries/UpsertDocument.squil
+Declare @Debug bit = 0;
+Declare @Param_ID bigint;
+Declare @Return_RowsAffected int;
+
+Use MyDatabase;
+
+Update [Documents] set Status = 'Done' where ID = @Param_ID;
+Set @Return_RowsAffected = @@ROWCOUNT;
+Select @Return_RowsAffected As RowsAffected;  -- optional on SQL Server (shown for clarity) — generator adds As [RowsAffected] if omitted
+```
+
+```csharp
+// MyDataContext.cs
+[SQuiLQueryTransaction(QueryFiles.QueriesUpsertDocument, setting: "MyDB")]
+public partial class MyDataContext { }
+```
+
+```csharp
+// Queries/UpsertDocument.cs
+public partial class MyDataContext
+{
+    public async Task<int> UpsertDocumentAsync(
+        long id, bool debug = false, CancellationToken ct = default)
+    {
+        var result = await ProcessQueriesUpsertDocumentAsync(
+            new QueriesUpsertDocumentRequest { ID = id, Debug = debug }, ct);
+
+        if (!result.TryGetValue(out var response, out var errors))
+            throw new SQuiLAggregateException(errors);
+
+        return response.RowsAffected;
+    }
+}
+```
+
+When `debug: true`, the query executes and the row count is read, but the transaction is rolled back — the caller sees the would-be `RowsAffected` without any persistent change.
+
+Auto-generated row records (those NOT backed by a `[SQuiLTable]` attribute) are emitted into a `<ContextNamespace>.Models` sub-namespace. Use the `Namespace` property on `[SQuiLQuery]` to control this: the default is `"Models"`; `Namespace: "Dto"` puts records in `<Ctx>.Dto`; `Namespace: ""` puts them in `<Ctx>` (top-level). Two contexts that share a row record must agree on the namespace — mismatch is build error SP0021.
+
+Two rules govern `[SQuiLTable]` types:
+
+- **Every SQL declaration that feeds one record must declare identical columns** (same names, types, nullability, and order; sizes may differ). This applies both to table variables that share a name and to different names mapped onto one class via multiple `[SQuiLTable]` attributes. Mismatches are build error SP0017.
+- **Never give a `[SQuiLTable]` partial record a primary constructor** (build error SP0018) — the generator emits the parameter list, and C# allows only one partial declaration to have one. Customize with a body instead:
+
+```csharp
+// ✔ add members in a body
+[SQuiLTable(TableType.Terms)]
+public partial record Terms { }
+
+// ✘ SP0018 — the generator owns the parameter list
+// [SQuiLTable(TableType.Terms)]
+// public partial record Terms(string TermCode);
+```
+
+### `<queryfilename>.cs` — per-query wrappers
+
+Each `.squil` gets a sibling `.cs` that adds wrapper methods to `MyDataContext` via `partial`. These wrappers are the public API: callers call `GetParticipationForPersonAsync(personId)`, not `ProcessQueriesExample2Async(new QueriesExample2Request { … })` followed by unwrapping a `SQuiLResultType`. The wrapper is also where the result is unwrapped — decide there what an error *means* (return a default, throw, log), so call sites never see `SQuiLResultType`.
+
+```csharp
+using SQuiL;
+
+namespace MyProject;
+
+public partial class MyDataContext
+{
+    public async Task<int> GetExample1ScalerAsync(CancellationToken ct = default)
+    {
+        var result = await ProcessQueriesExample1Async(
+            new QueriesExample1Request(),
+            ct);
+
+        if (!result.TryGetValue(out var response, out var errors))
+            throw new SQuiLAggregateException(errors);
+
+        return response.Scaler;
+    }
+}
+```
+
+```csharp
+using SQuiL;
+
+namespace MyProject;
+
+public partial class MyDataContext
+{
+    public async Task<ParticipationResult> GetParticipationForPersonAsync(
+        string personId,
+        CancellationToken ct = default)
+    {
+        var result = await ProcessQueriesExample2Async(
+            new QueriesExample2Request { PersonID = personId },
+            ct);
+
+        if (!result.TryGetValue(out var response, out var errors))
+            throw new SQuiLAggregateException(errors);
+
+        return new ParticipationResult(
+            response.Participation ?? [],
+            response.Overrides ?? []);
+    }
+}
+
+public record ParticipationResult(
+    IReadOnlyList<MyProject.Models.Participation> Participation,
+    IReadOnlyList<MyProject.Models.Overrides> Overrides);
+```
+
+`response.Participation` / `response.Overrides` are `List<MyProject.Models.Participation>?` / `List<MyProject.Models.Overrides>?`. Response lists have **no** `= []` initializer: they are `null` when the result set is absent, `[]` when returned empty, and `[...]` when 1+ rows — so a `?? []` guard in the wrapper is appropriate. Throwing `SQuiLAggregateException` here is one choice; the wrapper could equally return an empty/sentinel result or surface the `errors` list directly.
+
+Why this layout matters:
+
+- **One place to register queries.** Adding a new query is two steps (drop the `.squil`, add an attribute on `MyDataContext`) — not a hunt across the codebase.
+- **Authoring files travel together.** SQL + its wrapper live in the same folder. Renaming a `@Param_` and the call-site update is one folder, not two.
+- **Stable consumer API.** Callers see hand-named methods describing intent (`GetParticipationForPersonAsync`), not generator-named methods describing mechanics (`ProcessQueriesExample2Async`). The wrapper absorbs SQL-shape changes without breaking consumers.
+- **Error handling has a home.** The `SQuiLResultType` is unwrapped in the wrapper, where there's enough context to know what an error *means* — turn it into a thrown `SQuiLAggregateException`, a default, or a domain result; call sites only see the translated outcome.
+- **Cancellation and instrumentation in one spot.** Logging, metrics, retries, timeouts: applied per-query in the wrapper, not sprinkled at every call site.
+
+### `.filenesting.json` — IDE polish
+
+Visual Studio reads `.filenesting.json` to nest related files in Solution Explorer. Drop this at the project root so each `Example1.squil` shows up as a child of `Example1.cs`:
+
+```json
+{
+  "help": "https://go.microsoft.com/fwlink/?linkid=866610",
+  "dependentFileProviders": {
+    "add": {
+      "fileToFile": {
+        "add": {
+          "*.squil": [ "$(fileNameWithoutExtension).cs" ],
+          "*.sql": [ "$(fileNameWithoutExtension).cs" ]
+        }
+      }
+    }
+  }
+}
+```
+
+This is purely cosmetic — it doesn't affect the generator or the build — but it keeps the file tree readable when there are many queries.
+
+### DI registration
+
+The generator emits an `AddSQuiL()` extension method (in the
+`Microsoft.Extensions.DependencyInjection` namespace) that registers every
+generated data context as a singleton. Prefer it — new contexts come along
+automatically as queries are added:
+
+```csharp
+services.AddSingleton<IConfiguration>(configuration);
+services.AddSQuiL();
+```
+
+You still need `IConfiguration` registered (or otherwise injectable) so the
+context's constructor can resolve connection strings. `AddSQuiL()` is idempotent
+(guarded by an `IsLoaded` flag).
+
+### Error handling
+
+A query's result comes back as `SQuiLResultType<TResponse>` (or non-generic
+`SQuiLResultType`). Inspect it with `TryGetValue`:
+
+```csharp
+if (result.TryGetValue(out var response, out var errors))
+{
+    // success — use `response`
+}
+else
+{
+    // failure — `errors` is an IReadOnlyList<SQuiLError>
+}
+```
+
+`SQuiL.Core` provides three related types (provider-neutral — they don't
+depend on `SQuiL.SqlServer` or any other provider):
+
+- `SQuiLError` — the per-error record (SQL error number, severity, state, line, procedure, message); this is what `errors` holds. Call `error.AsDbException()` to get the underlying `System.Data.Common.DbException?` the provider raised (e.g. a `SqlException` for the SQL Server provider), if one was captured.
+- `SQuiLException` — wraps a single `SQuiLError`; build one with `error.AsSQuiLException()`. It is itself a `DbException`.
+- `SQuiLAggregateException` — wraps an `IReadOnlyList<SQuiLError>`; `new SQuiLAggregateException(errors)`.
+
+The generated code **does not throw** these — it returns the errors in the
+result. Whether to throw (`SQuiLException`/`SQuiLAggregateException`), return a
+default, or surface a domain-specific outcome is the wrapper's decision, made
+where there's enough context to know what an error from *this* query means.
+
+**Naming note:** the accessor used to be `AsSqlException()` (returning
+`Microsoft.Data.SqlClient.SqlException?`); it is now `AsDbException()`
+(returning `System.Data.Common.DbException?`) — part of neutralizing the
+error surface so `SQuiL.Core` has no SQL-Server-specific types. If the user's
+code (or an older answer) references `AsSqlException()`, point them at
+`AsDbException()` instead; downcast to `SqlException` only if they specifically
+need SQL-Server-only members and know the provider in use.
+
+---
+
+## When to read the upstream repo
+
+This skill encodes conventions that are stable across SQuiL versions. Read the live repo (https://github.com/daemogar/SQuiL) when:
+
+- The user reports a generator error whose phrasing doesn't match anything here — the parser's messages are more specific than this skill can be, and `SQuiL.Tests/` snapshots are the source of truth for what the generator emits.
+- A generated symbol has a different name than what's documented here — newer SQuiL versions may rename things.
+- The user is debugging the generator output itself or working inside `SQuiL.SourceGenerator/`.
+
+For everyday authoring, project setup, and consumer-side code, the conventions above are sufficient.

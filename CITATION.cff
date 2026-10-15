@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this artifact, please cite the Code Skill Server paper."
+title: "Code Skill Server: A Large-Scale Search Engine for Code Generation Skills"
+type: software
+authors:
+  - family-names: Li
+    given-names: Xiaoyong
+  - family-names: Li
+    given-names: Haolong
+  - family-names: Xu
+    given-names: Dongliang
+  - family-names: Li
+    given-names: Haoyu
+  - family-names: Wang
+    given-names: Yifan
+  - family-names: Shi
+    given-names: Jingyuan
+  - family-names: Wang
+    given-names: Yanghua
+  - family-names: Sun
+    given-names: Yanbin
+  - family-names: Pan
+    given-names: Shidong
+  - family-names: Yao
+    given-names: Yue
+

@@ -1,0 +1,155 @@
+---
+name: "generate-sdk"
+description: "Orchestrate generating an SDK for a target language end-to-end. Determines the right scenario (backwards-compatible or fresh) and guides through the correct sequence of sub-skills. Use when the user wants to generate an SDK, add a new language, create SDK bindings, start a new language target, or asks \"how do I add X support\". Also triggers for \"new SDK\", \"language support\", or \"scaffold SDK\"."
+---
+
+# /generate-sdk
+
+## Overview
+
+Orchestrate the end-to-end workflow for generating an SDK for a target language. This skill does not implement anything itself — it determines the right scenario, sequences the correct skills, and tracks progress across steps.
+
+## Inputs
+
+- **language** — target language (e.g., `ruby`, `python`, `node`, `go`)
+- **scenario** — `A` (backwards-compatible with existing SDK) or `B` (fresh, no existing SDK)
+- **project** — path to the emitter project
+- **spec** — path to the OpenAPI spec
+- **sdk_path** — path to the live SDK (Scenario A only)
+
+## Reference Docs
+
+- [Workflows](../../docs/architecture/workflows.md) — Phase 1 setup vs. Phase 2 ongoing spec updates
+- [Pipeline](../../docs/architecture/pipeline.md) — three-stage parse/emit/write flow
+
+## Architecture
+
+Emitters, extractors, smoke tests, and their unit tests all live in the **emitter project**, not in the oagen core repo. The emitter project depends on `@workos/oagen` for types and shared utilities.
+
+## Context Management
+
+Sub-skills use **subagents** (via the built-in `Explore` agent type) to keep the main context lean. Read-heavy exploration — studying existing SDKs, reading reference implementations — is delegated to isolated agents that return only structured summaries. This prevents context rot during the write-heavy generation steps that follow.
+
+Each sub-skill documents where it uses subagents:
+
+- `/generate-emitter` — Step 1a (SDK exploration) and Steps 3-5 (reference emitter reading)
+- `/generate-extractor` — Prerequisites (SDK exploration)
+- `/generate-smoke-test` — Prerequisites (reference smoke script reading) and Step 2 (SDK SERVICE_MAP)
+- `/verify-compat` — Step 1 (baseline extraction spot-check)
+
+## Step 1: Gather Inputs
+
+Collect these values via `AskUserQuestion`. If any were provided as arguments, skip the corresponding question.
+
+1. **`language`** — target language (e.g., `ruby`, `python`, `php`, `node`)
+2. **`scenario`** — which workflow to use:
+   > **A. Backwards compatible** — There's a published SDK with consumers who depend on its public API. The generated SDK must match the existing surface.
+   >
+   > **B. Fresh** — No existing SDK to preserve, or you're intentionally replacing one. No compat constraints.
+3. **`sdk_path`** _(Scenario A only)_ — path to the existing SDK. Validate the path exists (look for `package.json`, `Gemfile`, `go.mod`, `pyproject.toml`, or similar).
+4. **`project`** — emitter project path (e.g., `../oagen-emitters/node`). Create if needed:
+   ```bash
+   mkdir -p {project}/src/{language} && mkdir -p {project}/test/{language}
+   ```
+5. **`spec`** — path to the OpenAPI spec (e.g., `../openapi.yaml`)
+
+Store all values and pass them to all sub-skill invocations.
+
+## Step 2: Present the Plan
+
+### Scenario A — Backwards compatible
+
+```
+Step 1: /generate-emitter {language} {project} sdk_path={sdk_path}    — study existing SDK, scaffold emitter
+Step 2: /generate-extractor {language} sdk_path={sdk_path}            — scaffold extractor
+Step 3: /verify-compat {language} sdk_path={sdk_path}                 — extract baseline, verify
+Step 4: /generate-smoke-test {language}                               — smoke tests against output dir
+Step 5: /verify-smoke-test {language}                                 — iterate until clean
+Step 6: /integrate {language} sdk_path={sdk_path}                     — merge into live SDK
+```
+
+### Scenario B — Fresh
+
+```
+Step 1: /generate-emitter {project} {language}    — scaffold emitter
+Step 2: /generate-smoke-test {language}            — wire-level HTTP parity tests
+Step 3: /verify-smoke-test {language}              — run smoke tests
+```
+
+> **Lifecycle note:** Scenario B is a one-time bootstrap. Once the generated SDK ships, it becomes the live SDK. All future spec updates follow Scenario A — use `--target` to integrate into the live SDK and `--api-surface` to preserve backwards compatibility.
+
+Confirm with the user, then invoke the first skill.
+
+## Step 3: Run Skills in Sequence
+
+Invoke each skill in order using the `Skill` tool, passing `project` through. After each skill, validate:
+
+```bash
+# After /generate-emitter — design doc, entry point, and tests
+ls {project}/docs/sdk-architecture/{language}.md
+ls {project}/src/{language}/index.ts
+cd {project} && npx vitest run test/{language}/ 2>&1 | tail -5
+
+# After /generate-extractor — extractor registered with hints
+grep -l "{language}Extractor\|{language}_extractor" {project}/src/plugin.ts {project}/src/index.ts
+grep -l "hints" {project}/src/compat/extractors/{language}.ts
+
+# After /verify-compat — handled by the skill itself
+
+# After /generate-smoke-test — script exists
+ls {project}/smoke/sdk-{language}.ts
+
+# After /verify-smoke-test — handled by the skill itself
+
+# After /integrate — changes visible in live SDK
+cd {sdk_path} && git diff --stat
+```
+
+**For Scenario A:** After `/generate-emitter`, also verify the design doc references real SDK patterns:
+
+```bash
+grep -c "existing SDK\|from src/" {project}/docs/sdk-architecture/{language}.md
+```
+
+If a skill fails or the user wants to pause, note where they stopped. They can resume by running the remaining skills individually.
+
+## Step 4: Final Checklist
+
+Run the full validation suite:
+
+```bash
+cd {project} && npx vitest run    # emitter project
+npx tsc --noEmit                  # oagen core type check
+npx tsup                          # oagen core build
+```
+
+Then present the summary:
+
+```
+=== {language} SDK support: COMPLETE ===
+
+Scenario: {A/B}
+Skills completed:
+  [x] /generate-emitter {language}
+  [x] /generate-extractor {language}     (Scenario A only)
+  [x] /verify-compat {language}          (Scenario A only)
+  [x] /integrate {language}              (Scenario A only)
+  [x] /generate-smoke-test {language}
+
+Validation:
+  Emitter tests:    {N} passed, {N} failed
+  Type check:       PASS/FAIL
+  Build:            PASS/FAIL
+```
+
+Only include this next section in the output if this is Scenario A:
+
+## Output
+
+This skill produces, via its sub-skills:
+
+- A complete language emitter registered in the plugin bundle (`src/plugin.ts`)
+- An API surface extractor (Scenario A only)
+- A smoke test script at `smoke/sdk-{language}.ts`
+- Generated SDK code at `{project}/sdk/`
+- Integration into the live SDK (Scenario A only)

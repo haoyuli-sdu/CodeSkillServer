@@ -1,0 +1,19 @@
+name: Validate release
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate CSS-993
+        run: python verify_collection.py
+      - name: Run pipeline tests
+        working-directory: collection_pipeline
+        run: python -m unittest discover -s tests -p "test_*.py" -v

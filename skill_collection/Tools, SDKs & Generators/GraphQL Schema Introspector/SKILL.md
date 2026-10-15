@@ -1,0 +1,31 @@
+---
+name: "GraphQL Schema Introspector"
+description: "Performs GraphQL schema introspection using the graphql-js reference implementation and Apollo Client devtools protocol. Generates type documentation, query complexity analysis, and schema diff reports between API versions."
+---
+
+# GraphQL Schema Introspector
+
+Performs GraphQL schema introspection using the graphql-js reference implementation and Apollo Client devtools protocol. Generates type documentation, query complexity analysis, and schema diff reports between API versions.
+
+## Installation
+
+Use the upstream install or setup path that matches your environment:
+- npm install --save graphql
+- yarn add graphql
+- npm install graphql@git://github.com/graphql/graphql-js.git#npm
+
+Requirements and caveats from upstream:
+- GraphQL.js is a general-purpose library and can be used both in a Node server
+- with both CommonJS (require()) and ESModule (import) files. Ensure that any
+
+Basic usage or getting-started notes:
+- A general overview of GraphQL is available in the
+- [README](https://github.com/graphql/graphql-spec/blob/main/README.md) for the
+- [Specification for GraphQL](https://github.com/graphql/graphql-spec). That overview
+
+- Source: https://github.com/graphql/graphql-js
+- Extracted from upstream docs: https://raw.githubusercontent.com/graphql/graphql-js/HEAD/README.md
+
+## Source
+
+- [Agent Skill Exchange](https://agentskillexchange.com/skills/graphql-schema-introspector/)
