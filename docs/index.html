@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Code Skill Server: a large-scale search engine for code generation skills.">
+  <title>Code Skill Server: A Large-Scale Search Engine for Code Generation Skills</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <button class="to-top" id="toTop" aria-label="Back to top">↑</button>
+  <main id="top">
+    <section class="hero">
+      <div class="hero-grid" aria-hidden="true"></div><div class="hero-orb orb-one"></div><div class="hero-orb orb-two"></div>
+      <div class="hero-copy">
+        <p class="venue">Under review at ICLR 2027</p>
+        <h1>Code Skill Server: A Large-Scale Search Engine for Code Generation Skills</h1>
+        <p class="authors">
+          <a href="https://openreview.net/profile?id=~Xiaoyong_Li3">Xiaoyong Li</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Haolong_Li4">Haolong Li</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Dongliang_Xu3">Dongliang Xu</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Haoyu_Li28">Haoyu Li</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Yifan_Wang105">Yifan Wang</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Jingyuan_Shi2">Jingyuan Shi</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Yanghua_Wang1">Yanghua Wang</a><sup>1</sup>, <a href="https://openreview.net/profile?id=~Yanbin_Sun1">Yanbin Sun</a><sup>2</sup>, <a href="https://openreview.net/profile?id=~Shidong_Pan1">Shidong Pan</a><sup>3</sup>, <a href="https://openreview.net/profile?id=~Yue_Yao1">Yue Yao</a><sup>1</sup>
+        </p>
+        <p class="affiliations"><sup>1</sup> Shandong University &nbsp;&nbsp; <sup>2</sup> Guangzhou University &nbsp;&nbsp; <sup>3</sup> Independent Researcher</p>
+        <div class="pills">
+          <a class="pill" href="#abstract" title="Read the paper abstract on this page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6"/></svg>Paper
+          </a>
+          <span class="pill soon" aria-disabled="true" title="arXiv link will be added after release">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18 10 6l4 12M7 14h6M15 6l4 12M16 12h3"/></svg>arXiv
+          </span>
+          <a class="pill" href="https://github.com/haoyuli-sdu/CodeSkillServer" target="_blank" rel="noopener noreferrer" title="View the Code Skill Server artifacts on GitHub">
+            <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.8c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .26.18.58.69.48A10 10 0 0 0 12 2z"/></svg>Code
+          </a>
+        </div>
+      </div>
+      <div class="hero-server-mark" aria-label="Code Skill Server with 993 indexed skills in seven categories">
+        <div class="hero-server-orbit orbit-outer"><i>API</i><i>Data</i><i>Test</i><i>Tools</i></div>
+        <div class="hero-server-orbit orbit-inner"><i>Web</i><i>Math</i><i>General</i></div>
+        <div class="hero-server-panel">
+          <div class="hero-server-search" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg></div>
+          <span>CODE SKILL SERVER</span>
+          <h2>Find the right skills for every coding task.</h2>
+          <div class="hero-server-actions"><b>Search</b><i>→</i><b>Match</b><i>→</i><b>Rank</b></div>
+          <div class="hero-server-stats"><span><strong>993</strong> indexed skills</span><span><strong>7</strong> categories</span></div>
+        </div>
+      </div>
+      <a class="hero-flow-link" href="#how-it-works">See how it works <span>↓</span></a>
+    </section>
+
+    <section class="workflow-teaser" id="how-it-works">
+      <header class="workflow-heading">
+        <span>FROM QUERY TO AGENT</span>
+        <h2>How Code Skill Server Works</h2>
+        <p>A coding request enters the server, relevant skills are searched and ranked, and the best results are provided to the code agent.</p>
+      </header>
+      <div class="skill-universe workflow-universe" aria-label="Animated Code Skill Server retrieval workflow">
+        <canvas class="constellation-canvas" id="skillConstellation" aria-hidden="true"></canvas>
+        <div class="universe-glow" aria-hidden="true"></div>
+        <svg class="retrieval-routes" viewBox="0 0 1440 640" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <marker id="queryArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
+            <marker id="skillArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
+          </defs>
+          <path class="route route-query" marker-end="url(#queryArrow)" d="M300 332 C365 332 400 332 465 332"/>
+          <path class="route route-result" marker-end="url(#skillArrow)" d="M790 332 C850 332 870 332 930 332"/>
+          <path class="route route-agent" marker-end="url(#skillArrow)" d="M1185 332 C1220 332 1240 332 1272 332"/>
+          <path class="route route-skill r1" d="M600 210 C510 145 390 95 250 72"/>
+          <path class="route route-skill r2" d="M600 210 C690 142 808 94 948 72"/>
+          <path class="route route-skill r3" d="M565 308 C465 365 368 407 238 438"/>
+          <path class="route route-skill r4" d="M635 308 C735 365 834 407 968 438"/>
+        </svg>
+
+        <div class="task-pod semantic-card" aria-label="Input coding query">
+          <div class="flow-step"><span>01</span> INPUT</div>
+          <span class="pod-kicker">CODING QUERY</span>
+          <p>Build a REST API with authentication</p>
+          <div class="query-meta"><span>&lt;/&gt;</span><small>Natural-language task</small></div>
+        </div>
+
+        <div class="skill-card skill-one"><span>PY</span><div><small>Data &amp; Infrastructure</small><b>pandas-dataframe-transformations</b></div><i>0.94</i></div>
+        <div class="skill-card skill-two"><span>API</span><div><small>Web &amp; API</small><b>flask-restful-resources</b></div><i>0.91</i></div>
+        <div class="skill-card skill-three"><span>FIG</span><div><small>General &amp; Functional Code</small><b>matplotlib-plotting-api</b></div><i>0.88</i></div>
+        <div class="skill-card skill-four"><span>DB</span><div><small>Data &amp; Infrastructure</small><b>sqlite3-embedded-database</b></div><i>0.86</i></div>
+        <div class="skill-card skill-five"><span>TZ</span><div><small>General &amp; Functional Code</small><b>timezone-aware-datetime</b></div><i>0.82</i></div>
+        <div class="skill-card skill-six"><span>SDK</span><div><small>Tools &amp; Generators</small><b>docker-compose-generator</b></div><i>0.80</i></div>
+        <div class="skill-card skill-seven depth-card"><span>64</span><div><small>General &amp; Functional Code</small><b>base64-encoding</b></div></div>
+        <div class="skill-card skill-eight depth-card"><span>BS</span><div><small>Web &amp; API</small><b>beautifulsoup-html-parsing</b></div></div>
+        <div class="skill-card skill-nine depth-card"><span>RSA</span><div><small>General &amp; Functional Code</small><b>fernet-rsa-encryption</b></div></div>
+        <div class="skill-card skill-ten depth-card"><span>CSV</span><div><small>Data &amp; Infrastructure</small><b>csv-reading-writing</b></div></div>
+        <div class="skill-card skill-eleven depth-card"><span>DT</span><div><small>General &amp; Functional Code</small><b>datetime-operations</b></div></div>
+        <div class="skill-card skill-twelve depth-card"><span>FL</span><div><small>Web &amp; API</small><b>flask-application-routes</b></div></div>
+        <div class="skill-card skill-thirteen depth-card"><span>JS</span><div><small>Data &amp; Infrastructure</small><b>json-encoding-decoding</b></div></div>
+        <div class="skill-card skill-fourteen depth-card"><span>NP</span><div><small>General &amp; Functional Code</small><b>numpy-computing</b></div></div>
+        <div class="skill-card skill-fifteen depth-card"><span>HTTP</span><div><small>Web &amp; API</small><b>requests-http-patterns</b></div></div>
+        <div class="skill-card skill-sixteen depth-card"><span>SQL</span><div><small>Data &amp; Infrastructure</small><b>sqlite3-database</b></div></div>
+        <div class="skill-card skill-seventeen depth-card"><span>DK</span><div><small>Tools &amp; Infrastructure</small><b>docker-compose</b></div></div>
+        <div class="skill-card skill-eighteen depth-card"><span>FA</span><div><small>Web &amp; API</small><b>fastapi-crud</b></div></div>
+
+        <div class="server-core">
+          <div class="core-rings"><i></i><i></i><i></i></div>
+          <div class="core-panel">
+            <div class="core-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg></div>
+            <h2>Code Skill Server</h2>
+            <div class="retrieval-steps"><span>Search</span><i>→</i><span>Match</span><i>→</i><span>Rank</span></div>
+            <div class="core-index"><span><b>993</b> indexed skills</span><span><b>7</b> categories</span></div>
+            <div class="search-status"><i></i><span>Retrieving task-relevant skills</span></div>
+          </div>
+        </div>
+
+        <div class="retrieved-pod semantic-card" aria-label="Top three retrieved skills">
+          <div class="flow-step"><span>03</span> OUTPUT</div>
+          <span class="pod-kicker">RETRIEVED SKILLS · TOP-3</span>
+          <ol>
+            <li><span><b>fastapi-rest-api</b><small>API implementation</small></span><strong>0.94</strong></li>
+            <li><span><b>jwt-authentication</b><small>Secure access tokens</small></span><strong>0.91</strong></li>
+            <li><span><b>pytest-api-testing</b><small>Endpoint validation</small></span><strong>0.86</strong></li>
+          </ol>
+        </div>
+
+        <div class="agent-pod semantic-card" aria-label="Code agent receives the retrieved skills">
+          <div class="flow-step"><span>04</span> USE</div>
+          <div class="agent-symbol" aria-hidden="true">A</div>
+          <span class="pod-kicker">CODE AGENT</span>
+          <p>Builds with the retrieved skills</p>
+        </div>
+
+        <div class="flow-caption caption-query">Submit task</div>
+        <div class="flow-caption caption-search">Search &amp; rank</div>
+        <div class="flow-caption caption-serve">Provide skills</div>
+      </div>
+      <p class="hero-story-note"><strong>A coding query enters.</strong> The server searches and ranks its skill corpus, then provides the most relevant skills to a code agent.</p>
+    </section>
+
+    <aside class="scroll-skill-guide" id="scrollSkillGuide" aria-label="Code Skill Server retrieval assistant" aria-hidden="true">
+      <div class="guide-shadow"></div>
+      <div class="guide-machine">
+        <svg class="guide-connections" viewBox="0 0 246 150" aria-hidden="true">
+          <path d="M44 29Q56 53 92 60M209 20Q177 32 150 57M226 51Q207 63 178 71"/>
+          <circle cx="62" cy="46" r="3"/><circle cx="181" cy="34" r="3"/><circle cx="205" cy="61" r="3"/>
+        </svg>
+        <span class="guide-skill guide-skill-a">API</span>
+        <span class="guide-skill guide-skill-b">Data</span>
+        <span class="guide-skill guide-skill-c">Test</span>
+        <div class="guide-arm guide-arm-left"><i><b>Task</b><span>&lt;/&gt;</span></i></div>
+        <div class="guide-body">
+          <div class="guide-lens"><i></i></div>
+          <b>CSS</b>
+          <small>SKILL RETRIEVAL</small>
+          <div class="guide-slots"><i></i><i></i><i></i></div>
+        </div>
+        <div class="guide-arm guide-arm-right"><i><b>Agent</b><span>→</span></i></div>
+        <div class="guide-status"><i></i><span>Top-3 served</span></div>
+      </div>
+    </aside>
+
+    <section class="band white" id="abstract"><div class="wrap">
+      <h2>Abstract</h2>
+      <p class="abstract-copy">Agent skills have proven to be an effective technique for improving agent ability on specific tasks, including software engineering, natural science, and mathematics. During such a process, using agent skills often involves manually discovering and organizing skills from heterogeneous sources, while existing skill retrieval methods mainly focus on selecting relevant skills from established skill libraries. However, with the rapidly increasing number and variety of reusable agent skills, <strong>manually searching for relevant skills across heterogeneous sources is becoming impractical at scale</strong>. In this paper, we introduce the <strong>Code Skill Server (CSS), a large-scale search engine for finding the most useful code generation skills for a target task</strong>. CSS consists of a skill server that incrementally collects and indexes publicly available code generation skills from multiple sources, with <strong>993 skills included in the corpus used in this work</strong>. Extensive experiments across different retrieval methods and code generation benchmarks show that <strong>the best CSS configuration improves Pass@1 by up to 13.91 percentage points and consistently improves all evaluated models by at least 4.21 percentage points</strong> in the cross-model evaluation. These results demonstrate that CSS can effectively search for and serve relevant skills, improving code generation quality and enhancing models’ code generation capabilities.</p>
+    </div></section>
+
+
+    <section class="band tint" id="overview"><div class="wrap">
+      <h2>Overview</h2>
+      <p class="lead">CSS studies an <strong>end-to-end workflow</strong> for turning scattered public coding knowledge into <strong>task-specific guidance for code-generation agents</strong>.</p>
+      <div class="overview-copy">
+        <p><strong>Building the skill collection.</strong> The SkillServer searches <strong>public code repositories and skill registries</strong>, including GitHub, SkillsMP, and Skills.sh. It reads candidate <code>SKILL.md</code> files, <strong>filters out records without direct code-generation value, normalizes retained skills, removes duplicates, assigns capability categories, and builds reusable retrieval indexes</strong>. This preparation happens independently of individual user requests.</p>
+        <p><strong>Serving skills for a coding task.</strong> A client submits a coding task and its available context. FASTADAPT converts that information into a structured search request containing the task query and retrieval constraints. The SkillServer <strong>searches the relevant capability pools, ranks matching skills, and returns an ordered set of reusable instructions</strong>. The client then combines those skills with the original task, while the coding agent decides which returned skills to use when producing its solution.</p>
+      </div>
+      <figure class="overview-figure">
+        <img src="media/css-overview.svg" alt="Overview of Code Skill Server, from skill collection and task query to skill retrieval and code generation.">
+      </figure>
+      <div class="pipeline">
+        <article><span>01</span><div class="icon">⌕</div><h3>Collect</h3><p>Discover public skills from GitHub, Skills.sh, and SkillsMP.</p></article><div class="arrow">→</div>
+        <article><span>02</span><div class="icon">◇</div><h3>Curate</h3><p>Normalize records, remove duplicates, and retain code-generation value.</p></article><div class="arrow">→</div>
+        <article><span>03</span><div class="icon">⌘</div><h3>Retrieve</h3><p>Apply the configured retrieval method to select relevant skills for the task.</p></article><div class="arrow">→</div>
+        <article><span>04</span><div class="icon">✓</div><h3>Evaluate</h3><p>Measure functional correctness on BigCodeBench and CoderEval-Python.</p></article>
+      </div>
+    </div></section>
+
+    <section class="band dark" id="corpus"><div class="wrap">
+      <h2>The 993-Skill Corpus</h2><p class="lead">A frozen collection organized into three high-level domains and seven fine-grained capability categories.</p>
+      <div class="corpus-layout">
+        <div class="donut"><div><strong>993</strong><span>CODE SKILLS</span></div></div>
+        <div class="domains"><div><i class="mint"></i><b>503</b><span>Software Construction</span></div><div><i class="violet"></i><b>333</b><span>Tools & Infrastructure</span></div><div><i class="orange"></i><b>157</b><span>Quality & Evolution</span></div></div>
+        <div class="category-bars">
+          <div><p><span>General & Functional Code</span><b>290</b></p><i style="--w:100%"></i></div><div><p><span>Tools, SDKs & Generators</span><b>189</b></p><i style="--w:65.2%"></i></div>
+          <div><p><span>Data & Infrastructure</span><b>144</b></p><i style="--w:49.7%"></i></div><div><p><span>Testing</span><b>117</b></p><i style="--w:40.3%"></i></div>
+          <div><p><span>Application Components</span><b>116</b></p><i style="--w:40%"></i></div><div><p><span>Web & API</span><b>97</b></p><i style="--w:33.4%"></i></div>
+          <div><p><span>Code Migration</span><b>40</b></p><i style="--w:13.8%"></i></div>
+        </div>
+      </div>
+    </div></section>
+
+    <section class="band results-band" id="results"><div class="wrap">
+      <h2>Results</h2>
+      <p class="center">We evaluate whether <strong>retrieving task-relevant skills improves the functional correctness of generated code</strong>. Every method uses the <strong>same 993-skill snapshot</strong> and generates <strong>one formal solution per task</strong>. Reference solutions, hidden tests, and test outcomes are never shown to the retriever or the code-generation agent.</p>
+      <div class="experiment-facts">
+        <div><strong>2</strong><span>code-generation benchmarks</span></div>
+        <div><strong>4</strong><span>retrieval settings</span></div>
+        <div><strong>5</strong><span>models in cross-model evaluation</span></div>
+        <div><strong>Pass@1</strong><span>functional-correctness metric</span></div>
+      </div>
+      <div class="result-explainer">
+        <h3>How to read the results</h3>
+        <p><strong>Pass@1</strong> is the percentage of tasks whose first and only generated solution passes every benchmark test. A higher number therefore means that the agent solved more tasks correctly without regenerating an answer.</p>
+        <div class="method-guide">
+          <div><b>No-Skill</b><span>The code agent receives the task but no external skill guidance. This is the baseline.</span></div>
+          <div><b>BM25</b><span>Retrieves skills by lexical similarity between the task text and skill documents.</span></div>
+          <div><b>Graph-of-Skills</b><span>A relation-based retrieval method that models dependencies among skills.</span></div>
+          <div><b>SkillTrace</b><span>Decomposes the task and searches the skill graph for complementary guidance.</span></div>
+        </div>
+      </div>
+      <div class="result-tabs" role="tablist"><button class="result-tab active" data-target="bigcode" aria-selected="true">BigCodeBench</button><button class="result-tab" data-target="codereval" aria-selected="false">CoderEval-Python</button></div>
+      <div class="result-panel active" id="bigcode">
+        <div class="benchmark-copy"><small>FUNCTION-LEVEL GENERATION</small><h3>BigCodeBench</h3><p>Tasks span <strong>seven domains</strong>: Computation, General, Visualization, System, Time, Network, and Cryptography. <strong>The same tasks and evaluation protocol are used across all four settings.</strong></p><div class="score-callout"><small>BEST RESULT</small><strong>60.88%</strong><span>SkillTrace · +7.46 pp over No-Skill</span></div></div>
+        <div class="result-table-wrap"><div class="vector-table-scroll"><img class="vector-table" src="media/bigcodebench-results.svg" alt="BigCodeBench Pass@1: No-Skill 53.42%, BM25 58.33%, Graph-of-Skills 59.39%, SkillTrace 60.88%. Gains: 4.91, 5.97, and 7.46 percentage points."></div><p class="panel-note">SkillTrace improves over No-Skill in every BigCodeBench domain; the largest reported domain gain is in Network.</p></div>
+      </div>
+      <div class="result-panel" id="codereval">
+        <div class="benchmark-copy"><small>PROJECT-CONTEXT GENERATION</small><h3>CoderEval-Python</h3><p>CoderEval-Python contains <strong>230 tasks drawn from real software projects</strong> and groups them by contextual-dependency level from L1-L2 through L5-L6.</p><div class="score-callout"><small>BEST RESULT</small><strong>46.96%</strong><span>Graph-of-Skills · +13.91 pp over No-Skill</span></div></div>
+        <div class="result-table-wrap"><div class="vector-table-scroll"><img class="vector-table" src="media/codereval-results.svg" alt="CoderEval-Python Pass@1: No-Skill 33.04%, BM25 36.09%, Graph-of-Skills 46.96%, SkillTrace 40.43%. Gains: 3.05, 13.91, and 7.39 percentage points."></div><p class="panel-note">The gains across dependency levels indicate that external skills can remain useful even when success also depends on understanding a target project.</p></div>
+      </div>
+      <div class="paper-extracts">
+        <div class="paper-extract-heading"><small>MAIN BENCHMARK RESULTS</small><h3>Main results reported in the paper</h3><p>The table provides the complete domain-level BigCodeBench results and dependency-level CoderEval-Python results. Green cells mark the best scores. All scores are Pass@1 (%).</p></div>
+        <figure class="paper-figure">
+          <div class="vector-table-scroll"><img class="vector-table vector-table-wide" src="media/main-benchmark-results.svg" alt="Complete domain-level BigCodeBench and dependency-level CoderEval-Python Pass@1 results, with the best scores highlighted in green."></div>
+          <figcaption>Main Pass@1 results on BigCodeBench and CoderEval-Python.</figcaption>
+        </figure>
+      </div>
+      <div class="analysis-heading"><small>BEYOND THE AVERAGE SCORE</small><h3>What do the results tell us?</h3><p>The paper performs additional analyses to determine whether the gains come from a few isolated tasks, one particular model, or simply having more files in the corpus.</p></div>
+      <div class="analysis-sections">
+        <article class="analysis-section">
+          <div class="finding-copy"><small>TASK-LEVEL CHANGES</small><h3>More failures are fixed than successes are lost</h3><strong>112 fixed · 27 regressed</strong><p>On paired BigCodeBench outcomes, <strong>112 No-Skill failures become correct with SkillTrace</strong>, while 27 previously correct tasks regress. <strong>The net effect is 85 additional successful tasks.</strong> Skills can introduce regressions, but the improvements outweigh them in this experiment.</p></div>
+        <figure class="paper-figure">
+          <img class="task-outcomes-figure" src="media/task-outcomes.svg" alt="Task outcome transitions and a code example with and without task-specific skills.">
+          <figcaption>Task outcome transitions and an example where retrieved guidance turns an incorrect implementation into a passing solution.</figcaption>
+        </figure>
+        </article>
+        <article class="analysis-section">
+          <div class="finding-copy"><small>CROSS-MODEL EVIDENCE</small><h3>Every evaluated model improves</h3><strong>5 out of 5 models</strong><p><strong>All five evaluated language models improve under SkillTrace</strong> compared with their own No-Skill baselines. The benefit is observed across the evaluated models, rather than being limited to one model.</p></div>
+        <figure class="paper-figure compact">
+          <img src="media/cross-model-results.svg" alt="No-Skill and With-Skills Pass@1 across five language models.">
+          <figcaption>No-Skill versus SkillTrace across five language models.</figcaption>
+        </figure>
+        </article>
+        <article class="analysis-section">
+          <div class="finding-copy"><small>CORPUS CONSTRUCTION</small><h3>Curation matters, not only corpus size</h3><strong>58.10% vs. 50.95%</strong><p><strong>CSS-993 outperforms Raw-993 by 7.15 percentage points</strong> even though both contain 993 skills and use the same tasks, model, BM25 retriever, and prompt structure. This comparison supports the value of <strong>curating the collection, beyond simply collecting more skills</strong>.</p></div>
+          <figure class="paper-figure curation-comparison">
+            <div class="vector-table-scroll"><img class="vector-table" src="media/corpus-comparison.svg" alt="Raw-993: 993 skills, 50.95% Pass@1. CSS-993: 993 skills, 58.10% Pass@1."></div>
+            <figcaption>Corpus-quality comparison reported in the paper, on the same 210-task BigCodeBench subset.</figcaption>
+          </figure>
+      <div class="scale-intro"><h4>Broader coverage also helps in the scale experiment</h4><p>With the same 210-task BigCodeBench subset, model, prompt, and BM25 retriever, <strong>increasing the available collection from 0 to 993 skills raises Pass@1 from 48.10% to 58.10%</strong>.</p></div>
+      <div class="scale-table-wrap" role="region" aria-label="Skill collection scale experiment" tabindex="0">
+        <table class="scale-table">
+          <thead><tr><th>Available skills</th><th>0</th><th>199</th><th>397</th><th>596</th><th class="best">993</th></tr></thead>
+          <tbody>
+            <tr><th>Pass@1</th><td>48.10%</td><td>51.90%</td><td>56.67%</td><td>57.14%</td><td class="best"><strong>58.10%</strong></td></tr>
+            <tr class="gain-row"><th>Gain over 0 skills</th><td>—</td><td>+3.80 pp</td><td>+8.57 pp</td><td>+9.04 pp</td><td class="best"><strong>+10.00 pp</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="scale-note">The strongest result is obtained with the complete 993-skill collection.</p>
+        </article>
+      </div>
+    </div></section>
+
+    <section class="band white" id="citation"><div class="wrap"><h2>BibTeX</h2><div class="bib-wrap"><pre id="bib">@misc{li2026codeskillserver,
+  title     = {Code Skill Server: A Large-Scale Search Engine for Code Generation Skills},
+  author    = {Xiaoyong Li and Haolong Li and Dongliang Xu and Haoyu Li and Yifan Wang and Jingyuan Shi and Yanghua Wang and Yanbin Sun and Shidong Pan and Yue Yao},
+  year      = {2026}
+}</pre><button id="copyBib" type="button">Copy BibTeX</button></div><p class="bib-note">Citation information is provisional while the paper is under review.</p></div></section>
+  </main>
+  <footer><p><strong>Code Skill Server</strong> · Research project page</p><p>Under review at ICLR 2027</p></footer>
+  <script src="script.js"></script>
+</body></html>
