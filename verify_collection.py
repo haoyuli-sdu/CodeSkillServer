@@ -27,11 +27,10 @@ FRONTMATTER_FIELD = re.compile(r"^(name|description)\s*:\s*.+$", re.MULTILINE)
 
 
 def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    """Hash text content with platform-independent LF line endings."""
+    data = path.read_bytes()
+    normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
 
 
 def main() -> int:
