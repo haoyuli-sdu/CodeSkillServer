@@ -306,3 +306,21 @@
 @media(min-width:1321px) and (max-width:1449px){.scroll-skill-guide{left:8px;transform:translate3d(-24px,-8px,0) scale(.48)}.scroll-skill-guide.is-visible{transform:translate3d(0,0,0) scale(.52)}}
 @media(max-width:1320px){.scroll-skill-guide{display:none}}
 
+/* Lower the complete hero composition while preserving its internal spacing. */
+.hero{padding-top:150px}
+.author-name{display:inline-block;white-space:nowrap}
+.author-line-break{display:block}
+.author-notes{margin:-18px auto 25px;color:#aebdd0;font-size:clamp(14px,1.15vw,17px);line-height:1.6}
+.author-notes sup{color:#83ead5}
+@media(min-width:901px){
+  .authors{max-width:none;white-space:nowrap;font-size:clamp(18px,1.55vw,24px);letter-spacing:-.015em}
+  .affiliations{font-size:clamp(17px,1.5vw,22px)}
+}
+@media(max-width:900px){.hero{padding-top:110px}}
+@media(max-width:900px){
+  .authors{font-size:17px}
+  .affiliations{font-size:16px}
+  .author-notes{font-size:14px}
+}
+@media(max-width:600px){.hero{padding-top:82px}}
+
