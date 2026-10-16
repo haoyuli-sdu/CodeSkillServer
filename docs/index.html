@@ -51,6 +51,12 @@
         <span>FROM QUERY TO AGENT</span>
         <h2>How Code Skill Server Works</h2>
         <p>A coding request enters the server, relevant skills are searched and ranked, and the best results are provided to the code agent.</p>
+        <form class="workflow-search-form" id="skillSearchForm">
+          <label class="sr-only" for="skillSearchInput">Coding task query</label>
+          <input id="skillSearchInput" type="search" autocomplete="off" placeholder="Describe a coding task in English" value="Build a REST API with JWT authentication">
+          <button type="submit">Find Top-3 Skills</button>
+        </form>
+        <div class="workflow-search-status" id="skillSearchStatus">Loading 993 skills…</div>
       </header>
       <div class="skill-universe workflow-universe" aria-label="Animated Code Skill Server retrieval workflow">
         <canvas class="constellation-canvas" id="skillConstellation" aria-hidden="true"></canvas>
@@ -60,9 +66,9 @@
             <marker id="queryArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
             <marker id="skillArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
           </defs>
-          <path class="route route-query" marker-end="url(#queryArrow)" d="M300 332 C365 332 400 332 465 332"/>
-          <path class="route route-result" marker-end="url(#skillArrow)" d="M790 332 C850 332 870 332 930 332"/>
-          <path class="route route-agent" marker-end="url(#skillArrow)" d="M1185 332 C1220 332 1240 332 1272 332"/>
+          <path class="route route-query" marker-end="url(#queryArrow)" d="M322 332 L450 332"/>
+          <path class="route route-result" marker-end="url(#skillArrow)" d="M804 332 L900 332"/>
+          <path class="route route-agent" marker-end="url(#skillArrow)" d="M1150 332 L1237 332"/>
           <path class="route route-skill r1" d="M600 210 C510 145 390 95 250 72"/>
           <path class="route route-skill r2" d="M600 210 C690 142 808 94 948 72"/>
           <path class="route route-skill r3" d="M565 308 C465 365 368 407 238 438"/>
@@ -72,7 +78,7 @@
         <div class="task-pod semantic-card" aria-label="Input coding query">
           <div class="flow-step"><span>01</span> INPUT</div>
           <span class="pod-kicker">CODING QUERY</span>
-          <p>Build a REST API with authentication</p>
+          <p id="animatedQuery">Build a REST API with JWT authentication</p>
           <div class="query-meta"><span>&lt;/&gt;</span><small>Natural-language task</small></div>
         </div>
 
@@ -102,14 +108,14 @@
             <h2>Code Skill Server</h2>
             <div class="retrieval-steps"><span>Search</span><i>→</i><span>Match</span><i>→</i><span>Rank</span></div>
             <div class="core-index"><span><b>993</b> indexed skills</span><span><b>7</b> categories</span></div>
-            <div class="search-status"><i></i><span>Retrieving task-relevant skills</span></div>
+            <div class="search-status"><i></i><span id="animatedSearchStatus">Ready to retrieve task-relevant skills</span></div>
           </div>
         </div>
 
         <div class="retrieved-pod semantic-card" aria-label="Top three retrieved skills">
           <div class="flow-step"><span>03</span> OUTPUT</div>
           <span class="pod-kicker">RETRIEVED SKILLS · TOP-3</span>
-          <ol>
+          <ol id="animatedSkillResults">
             <li><span><b>fastapi-rest-api</b><small>API implementation</small></span><strong>0.94</strong></li>
             <li><span><b>jwt-authentication</b><small>Secure access tokens</small></span><strong>0.91</strong></li>
             <li><span><b>pytest-api-testing</b><small>Endpoint validation</small></span><strong>0.86</strong></li>
@@ -270,4 +276,5 @@
   </main>
   <footer><p><strong>Code Skill Server</strong> · Research project page</p><p>Under review at ICLR 2027</p></footer>
   <script src="script.js"></script>
+  <script src="skill-search.js"></script>
 </body></html>

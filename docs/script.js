@@ -190,3 +190,52 @@ if (constellation) {
     if (!reduceMotion.matches) frame = window.requestAnimationFrame(drawConstellation);
   });
 }
+
+// Inspect the live Input and Output cards without interrupting retrieval.
+const inspectableFlowCards = document.querySelectorAll('.workflow-universe .task-pod, .workflow-universe .retrieved-pod');
+if (inspectableFlowCards.length) {
+  const overlay = document.createElement('div');
+  overlay.className = 'flow-card-modal';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = '<div class="flow-card-modal-backdrop"></div><section class="flow-card-modal-panel" role="dialog" aria-modal="true" aria-label="Expanded workflow card"><button class="flow-card-modal-close" type="button" aria-label="Close expanded card">×</button><div class="flow-card-modal-content"></div></section>';
+  document.body.appendChild(overlay);
+  const content = overlay.querySelector('.flow-card-modal-content');
+  const closeButton = overlay.querySelector('.flow-card-modal-close');
+  let sourceCard = null;
+
+  const closeCard = () => {
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('flow-card-modal-open');
+    if (sourceCard) sourceCard.focus();
+    sourceCard = null;
+  };
+  const openCard = (card) => {
+    sourceCard = card;
+    content.innerHTML = card.innerHTML;
+    content.className = 'flow-card-modal-content ' + (card.classList.contains('task-pod') ? 'is-input' : 'is-output');
+    overlay.classList.add('is-open');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('flow-card-modal-open');
+    closeButton.focus();
+  };
+
+  inspectableFlowCards.forEach((card) => {
+    card.classList.add('flow-card-inspectable');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', (card.classList.contains('task-pod') ? 'Expand coding query' : 'Expand retrieved skills'));
+    card.addEventListener('click', () => openCard(card));
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCard(card);
+      }
+    });
+  });
+  overlay.querySelector('.flow-card-modal-backdrop').addEventListener('click', closeCard);
+  closeButton.addEventListener('click', closeCard);
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && overlay.classList.contains('is-open')) closeCard();
+  });
+}
