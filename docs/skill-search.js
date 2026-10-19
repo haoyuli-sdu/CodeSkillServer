@@ -21,7 +21,7 @@
     skills = payload.skills || [];
     status.textContent = skills.length + ' indexed skills · browser-local BM25 · Top-3';
   } catch (error) {
-    status.textContent = 'Could not load the skill index. Open this page through the local web server.';
+    status.textContent = 'The demo uses BM25 to rank indexed skills and return the Top-3 matches.';
     form.querySelector('button').disabled = true;
     return;
   }
